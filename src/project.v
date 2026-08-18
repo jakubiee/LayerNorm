@@ -16,12 +16,55 @@ module tt_um_example (
     input  wire       rst_n     // reset_n - low to reset
 );
 
-  // All output pins must be assigned. If not used, assign to 0.
-  assign uo_out  = ui_in + uio_in;  // Example: ou_out is the sum of ui_in and uio_in
-  assign uio_out = 0;
-  assign uio_oe  = 0;
 
-  // List all unused inputs to prevent warnings
+  wire valid = uio_in[0];
+  wire start = uio_in[1];
+
+  // State machine
+
+  localparam STATE_IDLE = 3'd0;
+  localparam STATE_MEAN = 3'd1;
+  localparam STATE_VAR = 3'd2;
+  localparam STATE_OUT = 3'd3;
+
+  reg [2:0] state;
+
+  reg signed [7:0] samples [0:7];
+  reg [3:0] idx;
+
+  reg signed [15:0] sum;
+  reg signed [15:0] mean;
+
+  reg signed [31:0] variance_sum;
+  reg signed [31:0] variance;
+
+  reg signed [15:0] centered;
+  reg signed [15:0] output_data;
+
+  assign uo_out = output_data[7:0];
+
+  assign uio_out = 8'b0;
+  assign uio_oe  = 8'b0;
+
+
+  always @(posedge clk) begin
+    if (!rst_n) begin
+      state <= STATE_IDLE;
+      idx <= 0; 
+      sum <= 0;
+      mean <= 0;
+      variance_sum <= 0;
+      variance <= 0;
+
+      centered <= 0;
+      output_data <= 0;
+    end
+  
+  end 
+
+
+
+
   wire _unused = &{ena, clk, rst_n, 1'b0};
 
 endmodule
