@@ -5,7 +5,7 @@
 
 `default_nettype none
 
-module tt_um_example (
+module tt_layernorm (
     input  wire [7:0] ui_in,    // Dedicated inputs
     output wire [7:0] uo_out,   // Dedicated outputs
     input  wire [7:0] uio_in,   // IOs: Input path
@@ -58,8 +58,36 @@ module tt_um_example (
 
       centered <= 0;
       output_data <= 0;
+    end else begin
+      case (state)
+        STATE_IDLE: begin
+          if (start) begin
+            idx <= 0;
+            sum <= 0;
+            state <= STATE_MEAN;
+          end
+        end
+        STATE_MEAN: begin
+          if (valid) begin
+              samples[idx] <= $signed(ui_in);
+              sum <= sum + $signed(ui_in);
+
+              if (idx == 7) begin
+                  mean <= (sum + $signed(ui_in)) >>> 3;
+                  idx <= 0;
+                  variance_sum <= 0;
+                  state <= STATE_VAR;
+              end else begin
+                  idx <= idx + 1;
+              end
+          end
+        end 
+
+        default: begin
+          state <= STATE_IDLE;
+        end
+      endcase    
     end
-  
   end 
 
 

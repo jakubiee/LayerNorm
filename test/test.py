@@ -6,35 +6,52 @@ from cocotb.clock import Clock
 from cocotb.triggers import ClockCycles
 
 
+async def send_sample(dut, value):
+    dut.ui_in.value = value & 0xFF
+    dut.uio_in.value = 0x01
+
+    await ClockCycles(dut.clk, 1)
+
+
 @cocotb.test()
-async def test_project(dut):
+async def test_layernorm(dut):
     dut._log.info("Start")
 
-    # Set the clock period to 10 us (100 KHz)
+    # Clock
     clock = Clock(dut.clk, 10, unit="us")
     cocotb.start_soon(clock.start())
 
-    # Reset
-    dut._log.info("Reset")
+    # Initial value
     dut.ena.value = 1
     dut.ui_in.value = 0
     dut.uio_in.value = 0
+
+    dut._log.info("Reset")
+
     dut.rst_n.value = 0
-    await ClockCycles(dut.clk, 10)
+    await ClockCycles(dut.clk, 5)
+
     dut.rst_n.value = 1
+    await ClockCycles(dut.clk, 2)
 
-    dut._log.info("Test project behavior")
-
-    # Set the input values you want to test
-    dut.ui_in.value = 20
-    dut.uio_in.value = 30
-
-    # Wait for one clock cycle to see the output values
+    # Start transaction
+    dut.uio_in.value = 0b00000010
     await ClockCycles(dut.clk, 1)
 
-    # The following assersion is just an example of how to check the output values.
-    # Change it to match the actual expected output of your module:
-    assert dut.uo_out.value == 50
+    dut.uio_in.value = 0
 
-    # Keep testing the module by changing the input values, waiting for
-    # one or more clock cycles, and asserting the expected output values.
+    samples = [0, 1, 2, 3, 4, 5, 6, 7]
+
+    for val in samples:
+        dut._log.info(f"Sending sample: {val}")
+        await send_sample(dut, val)
+
+    await ClockCycles(dut.clk, 1)
+
+    mean = dut.user_project.mean.value.signed_integer
+
+    dut._log.info(f"Calculated mean = {mean}")
+
+    assert mean == 3, (f"Expected mean = 3, got {mean}")
+
+    dut._log.info("Mean calculation PASSED")
