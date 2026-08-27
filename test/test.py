@@ -1,5 +1,3 @@
-# SPDX-FileCopyrightText: © 2024 Tiny Tapeout
-# SPDX-License-Identifier: Apache-2.0
 import cocotb
 
 from cocotb.clock import Clock
@@ -23,19 +21,14 @@ async def test_layernorm(dut):
     dut.ui_in.value = 0
     dut.uio_in.value = 0
 
-    dut._log.info("Reset")
-
     dut.rst_n.value = 0
     await ClockCycles(dut.clk, 5)
 
     dut.rst_n.value = 1
     await ClockCycles(dut.clk, 2)
 
-    dut._log.info("Start transaction")
-
-    dut.uio_in.value = 0b00000010
+    dut.uio_in.value = 0b10
     await ClockCycles(dut.clk, 1)
-
     dut.uio_in.value = 0
 
     samples = [0, 1, 2, 3, 4, 5, 6, 7]
@@ -66,6 +59,18 @@ async def test_layernorm(dut):
 
     dut._log.info("Variance PASSED")
 
+    await ClockCycles(dut.clk, 1)
+
+    inv_sqrt = dut.user_project.inv_sqrt.value.to_unsigned()
+
+    dut._log.info(f"Inv sqrt = {inv_sqrt}")
+
+    assert inv_sqrt == 1832, (
+        f"Expected inv_sqrt = 1832, got {inv_sqrt}"
+    )
+
+    dut._log.info("Inv sqrt PASSED")
+
     expected = [-3, -2, -1, 0, 1, 2, 3, 4]
     outputs = []
 
@@ -79,12 +84,10 @@ async def test_layernorm(dut):
         outputs.append(value)
 
         assert value == expected_value, (
-            f"Expected output {expected_value}, got {value}"
+            f"Expected {expected_value}, got {value}"
         )
 
         await ClockCycles(dut.clk, 1)
-
-    dut._log.info(f"Outputs = {outputs}")
 
     assert outputs == expected, (
         f"Expected {expected}, got {outputs}"
