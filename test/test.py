@@ -1,78 +1,79 @@
 import cocotb
-
 from cocotb.clock import Clock
-from cocotb.triggers import ClockCycles, RisingEdge, ReadOnly
+from cocotb.triggers import RisingEdge, ReadOnly
 
 
-async def send_sample(dut, value):
-    dut.ui_in.value = value & 0xFF
-    dut.uio_in.value = 0x01
-    await RisingEdge(dut.clk)
+STATE_NORM_LOAD = 6
+STATE_OUT = 9
+
+
+def signed8(value):
+    value = int(value) & 0xff
+    return value - 256 if value & 0x80 else value
 
 
 async def wait_for_state(dut, state):
-    while dut.user_project.state.value.to_unsigned() != state:
+    while True:
         await RisingEdge(dut.clk)
+        await ReadOnly()
 
-    await ReadOnly()
+        if int(dut.user_project.state.value) == state:
+            return
 
 
 @cocotb.test()
 async def test_layernorm(dut):
     dut._log.info("Start LayerNorm test")
 
-    clock = Clock(dut.clk, 10, unit="us")
-    cocotb.start_soon(clock.start())
+    cocotb.start_soon(
+        Clock(dut.clk, 10, unit="ns").start()
+    )
 
+    dut.rst_n.value = 0
     dut.ena.value = 1
     dut.ui_in.value = 0
     dut.uio_in.value = 0
 
-    dut.rst_n.value = 0
-    await ClockCycles(dut.clk, 5)
+    for _ in range(3):
+        await RisingEdge(dut.clk)
 
     dut.rst_n.value = 1
-    await ClockCycles(dut.clk, 2)
 
     dut.uio_in.value = 0b10
     await RisingEdge(dut.clk)
-    dut.uio_in.value = 0
+
+    dut.uio_in.value = 0b11
 
     samples = [0, 1, 2, 3, 4, 5, 6, 7]
 
-    for value in samples:
-        dut._log.info(f"Sending sample: {value}")
-        await send_sample(dut, value)
+    for sample in samples:
+        dut.ui_in.value = sample
+        await RisingEdge(dut.clk)
 
     dut.uio_in.value = 0
 
-    await wait_for_state(dut, 2)
+    await wait_for_state(dut, STATE_NORM_LOAD)
 
     mean = dut.user_project.mean.value.to_signed()
-
-    dut._log.info(f"Mean = {mean}")
-
-    assert mean == 3, f"Expected mean = 3, got {mean}"
-
-    dut._log.info("Mean PASSED")
-
-    await wait_for_state(dut, 5)
-
+    variance_sum = dut.user_project.variance_sum.value.to_signed()
     variance = dut.user_project.variance.value.to_signed()
-
-    dut._log.info(f"Variance = {variance}")
-
-    assert variance == 5, f"Expected variance = 5, got {variance}"
-
-    dut._log.info("Variance PASSED")
-
     inv_sqrt = dut.user_project.inv_sqrt.value.to_unsigned()
 
-    dut._log.info(f"Inv sqrt = {inv_sqrt}")
+    assert mean == 3
+    assert variance_sum == 44
+    assert variance == 5
+    assert inv_sqrt == 229
 
-    assert inv_sqrt == 1832, (
-        f"Expected inv_sqrt = 1832, got {inv_sqrt}"
-    )
+    expected = [-1, 0, 0, 0, 0, 0, 1, 1]
 
-    dut._log.info("Inv sqrt PASSED")
-    dut._log.info("ALL TESTS PASSED")
+    for expected_value in expected:
+        await wait_for_state(dut, STATE_OUT)
+
+        output = signed8(dut.uo_out.value)
+
+        assert output == expected_value
+
+        if expected_value != expected[-1]:
+            await RisingEdge(dut.clk)
+
+    dut._log.info("LayerNorm test PASSED")

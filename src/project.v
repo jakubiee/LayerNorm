@@ -62,18 +62,23 @@ module tt_um_layernorm (
 
     reg [8:0] inv_sqrt;
 
-    assign uo_out = (state == STATE_OUT)
-                  ? normalized
-                  : 8'b0;
-
-    assign uio_out = 8'b0;
-    assign uio_oe  = 8'b0;
-
     wire signed [8:0] diff =
         $signed(current_sample) - mean;
 
     wire [8:0] diff_abs =
         diff < 0 ? -diff : diff;
+
+    wire signed [17:0] norm_value =
+        mul_sign
+            ? -$signed(mul_result >>> 9)
+            :  $signed(mul_result >>> 9);
+
+    assign uo_out = (state == STATE_OUT)
+                  ? norm_value[7:0]
+                  : 8'b0;
+
+    assign uio_out = 8'b0;
+    assign uio_oe  = 8'b0;
 
     always @(posedge clk) begin
         if (!rst_n) begin
@@ -135,8 +140,7 @@ module tt_um_layernorm (
                             mean <= (sum + $signed(ui_in)) >>> 3;
                             idx <= 0;
                             variance_sum <= 0;
-                            current_sample <= $signed(ui_in);
-                            state <= STATE_VAR_MUL;
+                            state <= STATE_VAR_LOAD;
                         end else begin
                             idx <= idx + 1;
                         end
@@ -166,7 +170,7 @@ module tt_um_layernorm (
 
                 STATE_VAR_ACC: begin
                     mul_result <= mul_a * mul_b;
-                    state <= STATE_VAR_ACC + 1'b1;
+                    state <= STATE_INV_SQRT;
                 end
 
                 STATE_INV_SQRT: begin
@@ -174,8 +178,18 @@ module tt_um_layernorm (
 
                     if (idx == 7) begin
                         variance <= (variance_sum + mul_result) >>> 3;
+
+                        case ((variance_sum + mul_result) >>> 3)
+                            14'd1: inv_sqrt <= 9'd511;
+                            14'd2: inv_sqrt <= 9'd362;
+                            14'd3: inv_sqrt <= 9'd296;
+                            14'd4: inv_sqrt <= 9'd256;
+                            14'd5: inv_sqrt <= 9'd229;
+                            default: inv_sqrt <= 9'd0;
+                        endcase
+
                         idx <= 0;
-                        state <= STATE_INV_SQRT + 1'b1;
+                        state <= STATE_NORM_LOAD;
                     end else begin
                         idx <= idx + 1;
                         state <= STATE_VAR_LOAD;
@@ -210,10 +224,7 @@ module tt_um_layernorm (
                 end
 
                 STATE_OUT: begin
-                    if (mul_sign)
-                        normalized <= -$signed(mul_result >>> 9);
-                    else
-                        normalized <= $signed(mul_result >>> 9);
+                    normalized <= norm_value[7:0];
 
                     if (idx == 7) begin
                         idx <= 0;
