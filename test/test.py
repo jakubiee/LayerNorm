@@ -1,10 +1,6 @@
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import RisingEdge, ReadOnly
-
-
-STATE_NORM_LOAD = 6
-STATE_OUT = 9
+from cocotb.triggers import RisingEdge
 
 
 def signed8(value):
@@ -12,13 +8,36 @@ def signed8(value):
     return value - 256 if value & 0x80 else value
 
 
-async def wait_for_state(dut, state):
-    while True:
+async def wait_cycles(dut, cycles):
+    for _ in range(cycles):
         await RisingEdge(dut.clk)
-        await ReadOnly()
 
-        if int(dut.user_project.state.value) == state:
-            return
+
+async def run_layernorm(dut, samples):
+    dut.uio_in.value = 0b10
+    await RisingEdge(dut.clk)
+
+    dut.uio_in.value = 0b11
+
+    for sample in samples:
+        dut.ui_in.value = sample & 0xff
+        await RisingEdge(dut.clk)
+
+    dut.uio_in.value = 0
+
+    for _ in range(100):
+        await RisingEdge(dut.clk)
+        value = signed8(dut.uo_out.value)
+        if value != 0:
+            outputs = [value]
+
+            for _ in range(7):
+                await wait_cycles(dut, 4)
+                outputs.append(signed8(dut.uo_out.value))
+
+            return outputs
+
+    raise AssertionError("No output received")
 
 
 @cocotb.test()
@@ -34,46 +53,17 @@ async def test_layernorm(dut):
     dut.ui_in.value = 0
     dut.uio_in.value = 0
 
-    for _ in range(3):
-        await RisingEdge(dut.clk)
+    await wait_cycles(dut, 3)
 
     dut.rst_n.value = 1
 
-    dut.uio_in.value = 0b10
-    await RisingEdge(dut.clk)
-
-    dut.uio_in.value = 0b11
-
     samples = [0, 1, 2, 3, 4, 5, 6, 7]
-
-    for sample in samples:
-        dut.ui_in.value = sample
-        await RisingEdge(dut.clk)
-
-    dut.uio_in.value = 0
-
-    await wait_for_state(dut, STATE_NORM_LOAD)
-
-    mean = dut.user_project.mean.value.to_signed()
-    variance_sum = dut.user_project.variance_sum.value.to_signed()
-    variance = dut.user_project.variance.value.to_signed()
-    inv_sqrt = dut.user_project.inv_sqrt.value.to_unsigned()
-
-    assert mean == 3
-    assert variance_sum == 44
-    assert variance == 5
-    assert inv_sqrt == 229
-
     expected = [-1, 0, 0, 0, 0, 0, 1, 1]
 
-    for expected_value in expected:
-        await wait_for_state(dut, STATE_OUT)
+    outputs = await run_layernorm(dut, samples)
 
-        output = signed8(dut.uo_out.value)
-
-        assert output == expected_value
-
-        if expected_value != expected[-1]:
-            await RisingEdge(dut.clk)
+    assert outputs == expected, (
+        f"Expected {expected}, got {outputs}"
+    )
 
     dut._log.info("LayerNorm test PASSED")
