@@ -180,11 +180,21 @@ module tt_um_layernorm (
                         variance <= (variance_sum + mul_result) >>> 3;
 
                         case ((variance_sum + mul_result) >>> 3)
-                            14'd1: inv_sqrt <= 9'd511;
-                            14'd2: inv_sqrt <= 9'd362;
-                            14'd3: inv_sqrt <= 9'd296;
-                            14'd4: inv_sqrt <= 9'd256;
-                            14'd5: inv_sqrt <= 9'd229;
+                            14'd1:  inv_sqrt <= 9'd511;
+                            14'd2:  inv_sqrt <= 9'd362;
+                            14'd3:  inv_sqrt <= 9'd296;
+                            14'd4:  inv_sqrt <= 9'd256;
+                            14'd5:  inv_sqrt <= 9'd229;
+                            14'd6:  inv_sqrt <= 9'd209;
+                            14'd7:  inv_sqrt <= 9'd194;
+                            14'd8:  inv_sqrt <= 9'd181;
+                            14'd9:  inv_sqrt <= 9'd171;
+                            14'd10: inv_sqrt <= 9'd162;
+                            14'd11: inv_sqrt <= 9'd154;
+                            14'd12: inv_sqrt <= 9'd148;
+                            14'd13: inv_sqrt <= 9'd142;
+                            14'd14: inv_sqrt <= 9'd137;
+                            14'd15: inv_sqrt <= 9'd132;
                             default: inv_sqrt <= 9'd0;
                         endcase
 
